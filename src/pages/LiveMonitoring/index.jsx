@@ -124,7 +124,7 @@ function LiveMonitoring() {
   useEffect(() => {
     if (!user?.id) return;
 
-    fetch(`${process.env.REACT_APP_API_BASE_URL || "http://localhost:5000"}/api/monitoring/teller-id/${user.id}`)
+    fetch(`${process.env.REACT_APP_API_BASE_URL}/api/monitoring/teller-id/${user.id}`)
       .then((r) => r.json())
       .then((data) => {
         if (data.success) setTellerId(data.id_teller);

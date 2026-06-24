@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import Navbar from "../../components/Navbar";
 
-const API = process.env.REACT_APP_API_BASE_URL || "http://localhost:5000";
+const API = process.env.REACT_APP_API_BASE_URL;
 
 const STATUS_OPTIONS = [
   { value: "", label: "Semua Status" },

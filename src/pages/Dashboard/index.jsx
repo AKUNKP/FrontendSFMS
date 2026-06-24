@@ -3,7 +3,7 @@ import Navbar from "../../components/Navbar";
 import Card from "../../components/Card";
 import Chart from "../../components/Chart";
 
-const API = process.env.REACT_APP_API_BASE_URL || "http://localhost:5000";
+const API = process.env.REACT_APP_API_BASE_URL;
 
 // ─── Icon set (sama persis dengan sebelumnya) ─────────────────────────────────
 const statIcons = {
@@ -49,7 +49,7 @@ function TrendBadge({ direction, delta, label, invert = false }) {
     turun:  { icon: "↓", cls: "bg-red-400/30 text-red-200 ring-1 ring-red-300/30" },
     stabil: { icon: "→", cls: "bg-white/15 text-white/60" },
   };
-  const { icon, cls } = cfg[effectiveDir] || cfg.stabil;
+  const { cls } = cfg[effectiveDir] || cfg.stabil;
   const rawIcon = direction === "naik" ? "↑" : direction === "turun" ? "↓" : "→";
 
   return (
