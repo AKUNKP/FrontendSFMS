@@ -129,7 +129,7 @@ function LiveMonitoring() {
       .then((data) => {
         if (data.success) setTellerId(data.id_teller);
       })
-      .catch(() => {});
+      .catch(() => { });
   }, [user?.id]);
 
   // ─── Track nasabah presence → start/stop duration timer ─────────────
@@ -228,7 +228,7 @@ function LiveMonitoring() {
 
       return () => clearTimeout(stopTimer);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nasabahAI.data?.customer_detected, isMonitoring, tellerId, finishSession]);
   // ↑ sessionId SENGAJA tidak dimasukkan agar tidak loop — pakai sessionIdRef
 
@@ -261,8 +261,8 @@ function LiveMonitoring() {
         smileSaveIntervalRef.current = null;
       }
     };
-  // ↓ PERBAIKAN KRITIS: tellerAI.data TIDAK ada di sini
-  // Sebelumnya ada → interval direset setiap frame AI → data tidak pernah tersimpan!
+    // ↓ PERBAIKAN KRITIS: tellerAI.data TIDAK ada di sini
+    // Sebelumnya ada → interval direset setiap frame AI → data tidak pernah tersimpan!
   }, [isMonitoring, sessionId]);
 
   // ─── Duration timer (counts up every second while nasabah detected) ─
@@ -465,6 +465,18 @@ function LiveMonitoring() {
       if (nasabahGoneTimerRef.current) clearTimeout(nasabahGoneTimerRef.current);
       if (smileSaveIntervalRef.current) clearInterval(smileSaveIntervalRef.current);
       if (timerRef.current) clearInterval(timerRef.current);
+
+      // Auto-stop sesi jika user tiba-tiba pindah ke halaman Dashboard
+      const currentSessionId = sessionIdRef.current;
+      if (currentSessionId) {
+        // Kirim sinyal stop session ke backend dengan keepalive agar tidak dicancel browser
+        fetch(`${process.env.REACT_APP_API_BASE_URL}/api/monitoring/session/stop`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id_transaksi: currentSessionId }),
+          keepalive: true
+        }).catch(() => { });
+      }
     };
   }, []);
 
@@ -488,10 +500,10 @@ function LiveMonitoring() {
   const triggerLabel = { start: "Monitoring dimulai", stop: "Monitoring dihentikan" };
   const lastTriggerText = lastTrigger
     ? `${triggerLabel[lastTrigger.type]} - ${lastTrigger.time.toLocaleTimeString("id-ID", {
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-      })}`
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    })}`
     : "Belum ada";
 
   const durationLabel = nasabahDetectedAt
@@ -572,9 +584,8 @@ function LiveMonitoring() {
                   type="button"
                   id="btn-monitoring-toggle"
                   onClick={handleMonitoringToggle}
-                  className={`rounded-full px-5 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-white transition ${
-                    isMonitoring ? "bg-rose-600 hover:bg-rose-700" : "bg-slate-900 hover:bg-slate-800"
-                  }`}
+                  className={`rounded-full px-5 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-white transition ${isMonitoring ? "bg-rose-600 hover:bg-rose-700" : "bg-slate-900 hover:bg-slate-800"
+                    }`}
                 >
                   {isMonitoring ? "Hentikan Monitoring" : "Mulai Monitoring"}
                 </button>
