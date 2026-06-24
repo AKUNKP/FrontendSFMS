@@ -1,8 +1,4 @@
-import axios from "axios";
-
-const api = axios.create({
-  baseURL: process.env.REACT_APP_API_BASE_URL,
-});
+import api from "./apiClient";
 
 /**
  * Login dengan username ATAU email dan password.

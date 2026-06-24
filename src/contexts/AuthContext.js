@@ -12,8 +12,12 @@ function loadUser() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
+    if (parsed && parsed.user && parsed.user.role) {
+      return parsed; // returns { user, token }
+    }
+    // Backward compatibility for old format
     if (parsed && parsed.role && parsed.nama) {
-      return parsed;
+      return { user: parsed, token: null };
     }
     return null;
   } catch {
@@ -26,9 +30,11 @@ function loadUser() {
  * Data user disimpan di localStorage agar tetap tersedia setelah refresh.
  */
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(() => loadUser());
+  const [authState, setAuthState] = useState(() => loadUser());
+  const user = authState?.user || null;
+  const token = authState?.token || null;
 
-  const login = useCallback((userData) => {
+  const login = useCallback((userData, token) => {
     const data = {
       id: userData.id,
       role: userData.role || "teller",
@@ -36,13 +42,14 @@ export function AuthProvider({ children }) {
       username: userData.username || "",
       email: userData.email || "",
     };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    setUser(data);
+    const newAuthState = { user: data, token };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(newAuthState));
+    setAuthState(newAuthState);
   }, []);
 
   const logout = useCallback(() => {
     localStorage.removeItem(STORAGE_KEY);
-    setUser(null);
+    setAuthState(null);
   }, []);
 
   const isLoggedIn = user !== null;
@@ -50,8 +57,8 @@ export function AuthProvider({ children }) {
   const isTeller = user?.role === "teller";
 
   const value = useMemo(
-    () => ({ user, login, logout, isLoggedIn, isAdmin, isTeller }),
-    [user, login, logout, isLoggedIn, isAdmin, isTeller]
+    () => ({ user, token, login, logout, isLoggedIn, isAdmin, isTeller }),
+    [user, token, login, logout, isLoggedIn, isAdmin, isTeller]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

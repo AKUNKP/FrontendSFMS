@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { FilesetResolver, FaceLandmarker, FaceDetector } from "@mediapipe/tasks-vision";
 import { MovingAverage, processSmileResult, processCustomerResult } from "../utils/smileUtils";
 
-const MEDIAPIPE_WASM_CDN = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm";
+const MEDIAPIPE_WASM_PATH = "/mediapipe/wasm";
 const DETECT_INTERVAL_MS = 50; // 20 FPS
 
 /**
@@ -35,13 +35,13 @@ export function useAIDetection({ videoRef, type, enabled }) {
     initializingRef.current = true;
 
     try {
-      const vision = await FilesetResolver.forVisionTasks(MEDIAPIPE_WASM_CDN);
+      const vision = await FilesetResolver.forVisionTasks(MEDIAPIPE_WASM_PATH);
 
       if (type === "teller") {
         detectorRef.current = await FaceLandmarker.createFromOptions(vision, {
           baseOptions: {
             modelAssetPath:
-              "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+              "/models/face_landmarker.task",
             delegate: "GPU",
           },
           runningMode: "VIDEO",
@@ -53,7 +53,7 @@ export function useAIDetection({ videoRef, type, enabled }) {
         detectorRef.current = await FaceDetector.createFromOptions(vision, {
           baseOptions: {
             modelAssetPath:
-              "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite",
+              "/models/blaze_face_short_range.tflite",
             delegate: "GPU",
           },
           runningMode: "VIDEO",

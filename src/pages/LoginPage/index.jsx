@@ -37,8 +37,8 @@ export default function LoginPage() {
       const result = await loginUser(identifier.trim(), password);
       const userData = result.data;
 
-      // Simpan data user ke context
-      login(userData);
+      // Simpan data user dan token ke context
+      login(userData, result.token);
 
       // Redirect berdasarkan role ke URL yang berbeda
       if (userData.role === "teller") {

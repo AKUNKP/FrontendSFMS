@@ -33,7 +33,7 @@ function getScoreLevel(score) {
  * - "Mulai Monitoring" button for admin (spv) and teller roles
  */
 function LiveMonitoring() {
-  const { user, isAdmin, isTeller } = useAuth();
+  const { user, token, isAdmin, isTeller } = useAuth();
 
   // Camera refs
   const nasabahVideoRef = useRef(null);
@@ -122,15 +122,19 @@ function LiveMonitoring() {
 
   // ─── Resolve teller ID from logged-in user ──────────────────────────
   useEffect(() => {
-    if (!user?.id) return;
+    if (!user?.id || !isTeller) return;
 
-    fetch(`${process.env.REACT_APP_API_BASE_URL}/api/monitoring/teller-id/${user.id}`)
+    fetch(`${process.env.REACT_APP_API_BASE_URL}/api/monitoring/teller-id/${user.id}`, {
+      headers: {
+        "Authorization": `Bearer ${token}`
+      }
+    })
       .then((r) => r.json())
       .then((data) => {
         if (data.success) setTellerId(data.id_teller);
       })
       .catch(() => { });
-  }, [user?.id]);
+  }, [user?.id, isTeller, token]);
 
   // ─── Track nasabah presence → start/stop duration timer ─────────────
   useEffect(() => {
@@ -472,7 +476,10 @@ function LiveMonitoring() {
         // Kirim sinyal stop session ke backend dengan keepalive agar tidak dicancel browser
         fetch(`${process.env.REACT_APP_API_BASE_URL}/api/monitoring/session/stop`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { 
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${token}`
+          },
           body: JSON.stringify({ id_transaksi: currentSessionId }),
           keepalive: true
         }).catch(() => { });
