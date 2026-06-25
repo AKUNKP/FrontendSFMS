@@ -1,20 +1,81 @@
 import React, { useEffect, useState } from "react";
 
+// ── Konstanta ─────────────────────────────────────────────────────────────────
 const PERIODS = [
   { key: "day",   label: "Hari Ini" },
   { key: "week",  label: "Minggu" },
   { key: "month", label: "Bulan" },
   { key: "year",  label: "Tahun" },
 ];
-
+const PERIOD_LABEL = {
+  day: "Analitik Harian", week: "Analitik Mingguan",
+  month: "Analitik Bulanan", year: "Analitik Tahunan",
+};
 const PERIOD_BADGE = {
-  day:   "08:00 – 17:00",
-  week:  "7 Hari Terakhir",
-  month: "Bulan Ini",
-  year:  "Tahun Ini",
+  day: "08:00–17:00", week: "7 Hari Terakhir",
+  month: "Bulan Ini", year: "Tahun Ini",
 };
 
-function Chart({
+// ── Warna ─────────────────────────────────────────────────────────────────────
+const C = {
+  bar:       "#3b82f6",
+  barHover:  "#1d4ed8",
+  line:      "#10b981",
+  lineArea:  "#10b981",
+  threshold: "#f59e0b",
+  good:      "rgba(16,185,129,0.06)",
+  bad:       "rgba(239,68,68,0.05)",
+  grid:      "#f1f5f9",
+  axis:      "#cbd5e1",
+  text:      "#94a3b8",
+  textDark:  "#1e293b",
+};
+
+// ── Smooth bezier path dari array titik ──────────────────────────────────────
+function smoothPath(pts) {
+  if (pts.length === 0) return "";
+  if (pts.length === 1) return `M${pts[0][0]},${pts[0][1]}`;
+  let d = `M${pts[0][0]},${pts[0][1]}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const [x0, y0] = pts[i];
+    const [x1, y1] = pts[i + 1];
+    const cpx = (x0 + x1) / 2;
+    d += ` C${cpx},${y0} ${cpx},${y1} ${x1},${y1}`;
+  }
+  return d;
+}
+
+// ── Format angka ringkas ──────────────────────────────────────────────────────
+const fmt = (n) => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
+
+// ── Tooltip SVG ───────────────────────────────────────────────────────────────
+function SvgTooltip({ x, y, label, vol, smile, svgW, padL, padR }) {
+  const W = 148, H = 82;
+  const tx = Math.min(Math.max(x - W / 2, padL), svgW - padR - W);
+  const ty = Math.max(y - H - 16, 4);
+  const smileColor = smile >= 60 ? "#10b981" : smile >= 40 ? "#f59e0b" : "#ef4444";
+  return (
+    <g style={{ pointerEvents: "none" }}>
+      <rect x={tx + 3} y={ty + 3} width={W} height={H} rx={10} fill="rgba(0,0,0,0.12)" />
+      <rect x={tx} y={ty} width={W} height={H} rx={10} fill="white" stroke="#e2e8f0" strokeWidth={1} />
+      <rect x={tx} y={ty} width={W} height={24} rx={10} fill="#1e293b" />
+      <rect x={tx} y={ty + 14} width={W} height={10} fill="#1e293b" />
+      <text x={tx + W / 2} y={ty + 15} textAnchor="middle" fontSize={11} fontWeight="700" fill="white">{label}</text>
+      <rect x={tx + 12} y={ty + 31} width={7} height={7} rx={2} fill={C.bar} />
+      <text x={tx + 24} y={ty + 39} fontSize={11} fill="#475569">Sesi:</text>
+      <text x={tx + W - 12} y={ty + 39} textAnchor="end" fontSize={12} fontWeight="700" fill={C.textDark}>{vol}</text>
+      <circle cx={tx + 15.5} cy={ty + 55} r={4} fill={smileColor} />
+      <text x={tx + 24} y={ty + 59} fontSize={11} fill="#475569">Smile avg:</text>
+      <text x={tx + W - 12} y={ty + 59} textAnchor="end" fontSize={12} fontWeight="700" fill={smileColor}>{smile}%</text>
+      <text x={tx + W / 2} y={ty + H - 8} textAnchor="middle" fontSize={9} fill="#94a3b8">
+        {smile >= 60 ? "✓ Di atas threshold" : "⚠ Di bawah threshold"}
+      </text>
+    </g>
+  );
+}
+
+// ── MAIN CHART ────────────────────────────────────────────────────────────────
+export default function Chart({
   title,
   labels = [],
   volume = [],
@@ -27,242 +88,341 @@ function Chart({
   selectedTellerId = "all",
   onTellerChange,
 }) {
-  const width   = 640;
-  const height  = 260;
-  const padding = 36;
-  const [activeIndex, setActiveIndex] = useState(null);
-
-  // Kosong / loading state
-  const hasData = !isEmpty && labels.length > 0 && volume.length > 0;
-
-  // Safe max — hindari divide by zero
-  const maxVolume = hasData ? Math.max(...volume, 1) * 1.15 : 100;
-  const step = hasData ? (width - padding * 2) / Math.max(labels.length - 1, 1) : 0;
-
-  const toVolPt = (value, index) => {
-    const x = padding + index * step;
-    const y = height - padding - (value / maxVolume) * (height - padding * 2);
-    return [x, y];
-  };
-
-  // smileAvg adalah 0-100, kita gambar di axis yang sama dengan scaling berbeda
-  const toSmilePt = (value, index) => {
-    const x = padding + index * step;
-    // Scale smile (0-100) ke 30-80% dari tinggi chart agar mudah dibaca
-    const normalized = value / 100;
-    const y = height - padding - normalized * (height - padding * 2) * 0.7 - (height - padding * 2) * 0.05;
-    return [x, y];
-  };
-
-  const buildLine = (pts) =>
-    pts.map(([x, y], i) => `${i === 0 ? "M" : "L"} ${x} ${y}`).join(" ");
-
-  const volPts   = hasData ? volume.map((v, i) => toVolPt(v, i)) : [];
-  const smilePts = hasData && smileAvg.length > 0 ? smileAvg.map((v, i) => toSmilePt(v, i)) : [];
-
-  const volumeLine = buildLine(volPts);
-  const smileLine  = buildLine(smilePts);
-
-  const volumeArea = hasData
-    ? `${volumeLine} L ${volPts[volPts.length - 1][0]} ${height - padding} L ${volPts[0][0]} ${height - padding} Z`
-    : "";
+  const [hoverIdx, setHoverIdx] = useState(null);
+  const [activeIdx, setActiveIdx] = useState(null);
 
   useEffect(() => {
-    setActiveIndex(null);
+    setHoverIdx(null);
+    setActiveIdx(null);
   }, [period, selectedTellerId, labels.length]);
 
-  const selectedPoint = hasData && activeIndex !== null
-    ? {
-        label: labels[activeIndex],
-        volume: volume[activeIndex] || 0,
-        smile: smileAvg[activeIndex] ?? 0,
-      }
-    : null;
+  const hasData = !isEmpty && labels.length > 0 && volume.length > 0;
 
-  const handlePointKeyDown = (event, index) => {
-    if (event.key === "Enter" || event.key === " ") {
-      event.preventDefault();
-      setActiveIndex(index);
-    }
-  };
+  // ── Dimensi ──────────────────────────────────────────────────────────────
+  const SVG_W  = 720;
+  const SVG_H  = 300;
+  const PAD_T  = 24;
+  const PAD_B  = 38;
+  const PAD_L  = 50;
+  const PAD_R  = 50;
+  const PLOT_W = SVG_W - PAD_L - PAD_R;
+  const PLOT_H = SVG_H - PAD_T - PAD_B;
+  const THRESH = 60;
+
+  const n      = hasData ? labels.length : 0;
+  const maxVol = hasData ? Math.max(...volume, 1) * 1.25 : 10;
+  const BAR_W  = Math.max(6, Math.min(32, (PLOT_W / Math.max(n, 1)) * 0.50));
+
+  const xOf    = (i) => n <= 1 ? PAD_L + PLOT_W / 2 : PAD_L + (PLOT_W / (n - 1)) * i;
+  const yVol   = (v) => PAD_T + PLOT_H - (v / maxVol) * PLOT_H;
+  const ySmile = (s) => PAD_T + PLOT_H - (s / 100) * PLOT_H;
+  const threshY = ySmile(THRESH);
+
+  // Peak index
+  const peakIdx = hasData ? volume.indexOf(Math.max(...volume)) : -1;
+
+  // Smile bezier path
+  const smilePts = hasData && smileAvg.length > 0
+    ? smileAvg.map((s, i) => [xOf(i), ySmile(s)])
+    : [];
+  const linePath = smoothPath(smilePts);
+  const areaPath = smilePts.length > 1
+    ? `${linePath} L${smilePts[smilePts.length - 1][0]},${PAD_T + PLOT_H} L${smilePts[0][0]},${PAD_T + PLOT_H} Z`
+    : "";
+
+  // Titik fokus
+  const focusIdx = hoverIdx !== null ? hoverIdx : activeIdx;
+  const focused  = focusIdx !== null && hasData ? {
+    label:  labels[focusIdx],
+    volume: volume[focusIdx] || 0,
+    smile:  smileAvg[focusIdx] ?? 0,
+    x: xOf(focusIdx),
+    y: smileAvg[focusIdx] != null ? ySmile(smileAvg[focusIdx]) : PAD_T,
+  } : null;
+
+  const volTicks   = Array.from({ length: 5 }, (_, i) => Math.round(maxVol / 4 * i));
+  const smileTicks = [0, 25, 50, 75, 100];
+  const skipX      = n > 16 ? Math.ceil(n / 12) : 1;
 
   return (
-    <div className="rounded-3xl bg-white p-6 shadow-[0_18px_40px_-26px_rgba(15,23,42,0.5)]">
-      {/* Header — sama persis dengan aslinya, tambah filter tabs */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Analitik Harian</p>
-          <h3 className="mt-2 text-lg font-semibold text-slate-900">{title}</h3>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <select
-            value={selectedTellerId}
-            onChange={(event) => onTellerChange?.(event.target.value)}
-            className="h-9 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 outline-none transition-colors hover:bg-slate-50 focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
-            aria-label="Filter teller"
-          >
-            <option value="all">Semua Teller</option>
-            {tellers.map((teller) => (
-              <option key={teller.id_teller} value={String(teller.id_teller)}>
-                {teller.nama}{teller.kode_teller ? ` - ${teller.kode_teller}` : ""}
-              </option>
-            ))}
-          </select>
-          {/* Filter period tabs */}
-          <div className="flex rounded-xl overflow-hidden border border-slate-200 text-[11px] font-semibold">
-            {PERIODS.map((p) => (
-              <button
-                key={p.key}
-                onClick={() => onPeriodChange?.(p.key)}
-                className={`px-3 py-1.5 transition-colors ${
-                  period === p.key
-                    ? "bg-slate-900 text-white"
-                    : "text-slate-500 hover:bg-slate-50"
-                }`}
-              >
-                {p.label}
-              </button>
-            ))}
+    <div className="overflow-hidden rounded-3xl bg-white shadow-[0_24px_60px_-30px_rgba(15,23,42,0.45)]">
+
+      {/* ── HEADER TERANG ── */}
+      <div className="bg-white border-b border-slate-100 px-6 py-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-slate-400">
+              {PERIOD_LABEL[period]}
+            </p>
+            <h3 className="mt-1 text-base font-bold text-slate-900">{title}</h3>
           </div>
-          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-500">
-            {PERIOD_BADGE[period]}
-          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Filter teller */}
+            <select
+              value={selectedTellerId}
+              onChange={(e) => onTellerChange?.(e.target.value)}
+              className="h-8 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-semibold text-slate-600 outline-none transition hover:bg-slate-50 focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+            >
+              <option value="all">Semua Teller</option>
+              {tellers.map((t) => (
+                <option key={t.id_teller} value={String(t.id_teller)}>
+                  {t.nama}{t.kode_teller ? ` — ${t.kode_teller}` : ""}
+                </option>
+              ))}
+            </select>
+
+            {/* Period tabs */}
+            <div className="flex overflow-hidden rounded-lg border border-slate-200 text-[11px] font-semibold bg-white">
+              {PERIODS.map((p) => (
+                <button key={p.key} onClick={() => onPeriodChange?.(p.key)}
+                  className={`px-3 py-1.5 transition-colors ${
+                    period === p.key ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-50"
+                  }`}>
+                  {p.label}
+                </button>
+              ))}
+            </div>
+
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-medium text-slate-500">
+              {PERIOD_BADGE[period]}
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* Chart body */}
-      <div className="mt-6 flex gap-4">
-        {/* Y-axis labels */}
-        <div className="flex h-[260px] flex-col justify-between text-xs text-slate-400">
-          {[4, 3, 2, 1, 0].map((tick) => (
-            <span key={tick}>{Math.round((maxVolume / 4) * tick)}</span>
-          ))}
-        </div>
-
-        <div className="flex-1">
-          {loading ? (
-            /* Loading skeleton */
-            <div className="h-[260px] flex items-center justify-center">
-              <div className="space-y-3 w-full px-4">
-                <div className="h-2 bg-slate-100 rounded animate-pulse w-full" />
-                <div className="h-2 bg-slate-100 rounded animate-pulse w-4/5" />
-                <div className="h-2 bg-slate-100 rounded animate-pulse w-full" />
-                <div className="h-2 bg-slate-100 rounded animate-pulse w-3/4" />
-                <div className="h-2 bg-slate-100 rounded animate-pulse w-full" />
-              </div>
+      {/* ── CHART AREA ── */}
+      <div className="bg-white px-4 pb-4 pt-4">
+        {loading ? (
+          <div className="flex h-[300px] items-center justify-center">
+            <div className="w-full space-y-3 px-6">
+              {[1, .8, 1, .7, 1].map((w, i) => (
+                <div key={i} className="h-1.5 animate-pulse rounded bg-slate-100"
+                  style={{ width: `${w * 100}%` }} />
+              ))}
             </div>
-          ) : !hasData ? (
-            /* Empty state */
-            <div className="h-[260px] flex flex-col items-center justify-center gap-2 text-slate-400">
-              <svg viewBox="0 0 24 24" className="h-10 w-10 opacity-30" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <path d="M3 3v18h18" />
-                <path d="M7 16l4-4 4 4 4-8" />
-              </svg>
-              <span className="text-sm">Belum ada data untuk periode ini</span>
-            </div>
-          ) : (
-            /* SVG Chart — gaya sama persis dengan aslinya */
-            <svg viewBox={`0 0 ${width} ${height}`} className="h-[260px] w-full">
+          </div>
+        ) : !hasData ? (
+          <div className="flex h-[300px] flex-col items-center justify-center gap-3">
+            <svg viewBox="0 0 24 24" className="h-14 w-14 text-slate-200"
+              fill="none" stroke="currentColor" strokeWidth="1.2">
+              <path d="M3 3v18h18" /><path d="M7 16l4-4 4 4 4-8" />
+            </svg>
+            <p className="text-sm font-semibold text-slate-400">Belum ada data untuk periode ini</p>
+            <p className="text-xs text-slate-300">Coba pilih periode yang berbeda</p>
+          </div>
+        ) : (
+          <>
+            <svg
+              viewBox={`0 0 ${SVG_W} ${SVG_H}`}
+              className="h-[300px] w-full select-none"
+              onMouseLeave={() => setHoverIdx(null)}
+            >
               <defs>
-                <linearGradient id="volumeGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%"   stopColor="#3b82f6" stopOpacity="0.32" />
-                  <stop offset="100%" stopColor="#3b82f6" stopOpacity="0" />
+                <linearGradient id="cg_bar" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%"   stopColor={C.bar} stopOpacity=".9" />
+                  <stop offset="100%" stopColor={C.bar} stopOpacity=".55" />
                 </linearGradient>
+                <linearGradient id="cg_barH" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%"   stopColor={C.barHover} stopOpacity="1" />
+                  <stop offset="100%" stopColor={C.barHover} stopOpacity=".7" />
+                </linearGradient>
+                <linearGradient id="cg_area" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%"   stopColor={C.lineArea} stopOpacity=".22" />
+                  <stop offset="80%"  stopColor={C.lineArea} stopOpacity=".04" />
+                  <stop offset="100%" stopColor={C.lineArea} stopOpacity="0" />
+                </linearGradient>
+                <clipPath id="cg_clip">
+                  <rect x={PAD_L} y={PAD_T} width={PLOT_W} height={PLOT_H} />
+                </clipPath>
               </defs>
 
-              {/* Grid lines */}
-              {[0, 1, 2, 3, 4].map((index) => {
-                const y = padding + ((height - padding * 2) / 4) * index;
+              {/* ── Zona warna ── */}
+              <rect x={PAD_L} y={threshY} width={PLOT_W} height={PAD_T + PLOT_H - threshY}
+                fill={C.bad} clipPath="url(#cg_clip)" />
+              <rect x={PAD_L} y={PAD_T} width={PLOT_W} height={threshY - PAD_T}
+                fill={C.good} clipPath="url(#cg_clip)" />
+
+              {/* ── Grid horizontal ── */}
+              {[0, 0.25, 0.5, 0.75, 1].map((frac, i) => {
+                const y = PAD_T + PLOT_H * (1 - frac);
                 return (
-                  <line
-                    key={y}
-                    x1={padding} y1={y}
-                    x2={width - padding} y2={y}
-                    stroke="#e2e8f0" strokeDasharray="6 6"
-                  />
+                  <line key={i} x1={PAD_L} y1={y} x2={PAD_L + PLOT_W} y2={y}
+                    stroke={C.grid} strokeWidth={frac === 0 ? 1.5 : 1}
+                    strokeDasharray={frac === 0 ? "0" : "3 5"} />
                 );
               })}
 
-              {/* Area fill */}
-              <path d={volumeArea} fill="url(#volumeGradient)" />
+              {/* ── Threshold line ── */}
+              <line x1={PAD_L} y1={threshY} x2={PAD_L + PLOT_W} y2={threshY}
+                stroke={C.threshold} strokeWidth={1.5} strokeDasharray="5 4" opacity=".8" />
+              <rect x={PAD_L + PLOT_W - 66} y={threshY - 14} width={64} height={13}
+                rx={4} fill={C.threshold} opacity=".15" />
+              <text x={PAD_L + PLOT_W - 34} y={threshY - 4} textAnchor="middle"
+                fontSize={9} fontWeight="600" fill={C.threshold}>Threshold 60%</text>
 
-              {/* Volume line (biru solid) */}
-              <path d={volumeLine} fill="none" stroke="#2563eb" strokeWidth="3" strokeLinejoin="round" />
+              {/* ── Y-axis kiri (volume) ── */}
+              <line x1={PAD_L} y1={PAD_T} x2={PAD_L} y2={PAD_T + PLOT_H}
+                stroke={C.axis} strokeWidth={1} />
+              {volTicks.map((tick, i) => {
+                const y = PAD_T + PLOT_H * (1 - i / 4);
+                return (
+                  <text key={i} x={PAD_L - 8} y={y + 4}
+                    textAnchor="end" fontSize={10} fill={C.text}>{fmt(tick)}</text>
+                );
+              })}
+              <text x={14} y={PAD_T + PLOT_H / 2}
+                transform={`rotate(-90,14,${PAD_T + PLOT_H / 2})`}
+                textAnchor="middle" fontSize={10} fontWeight="700" fill={C.bar}>Sesi</text>
 
-              {/* Smile avg line (kuning putus-putus) */}
-              {smilePts.length > 0 && (
-                <path d={smileLine} fill="none" stroke="#f59e0b" strokeWidth="2.5" strokeDasharray="6 8" strokeLinejoin="round" />
-              )}
+              {/* ── Y-axis kanan (smile %) ── */}
+              <line x1={PAD_L + PLOT_W} y1={PAD_T} x2={PAD_L + PLOT_W} y2={PAD_T + PLOT_H}
+                stroke={C.axis} strokeWidth={1} />
+              {smileTicks.map((pct, i) => {
+                const y = PAD_T + PLOT_H * (1 - pct / 100);
+                return (
+                  <text key={i} x={PAD_L + PLOT_W + 8} y={y + 4}
+                    textAnchor="start" fontSize={10} fill={C.text}>{pct}%</text>
+                );
+              })}
+              <text x={SVG_W - 14} y={PAD_T + PLOT_H / 2}
+                transform={`rotate(90,${SVG_W - 14},${PAD_T + PLOT_H / 2})`}
+                textAnchor="middle" fontSize={10} fontWeight="700" fill={C.line}>Smile %</text>
 
-              {/* Dots on volume line */}
-              {volPts.map(([x, y], i) => {
-                const isActive = activeIndex === i;
+              {/* ── Bars volume ── */}
+              {volume.map((v, i) => {
+                const x       = xOf(i);
+                const bh      = (v / maxVol) * PLOT_H;
+                const by      = PAD_T + PLOT_H - bh;
+                const isFocus = hoverIdx === i || activeIdx === i;
+                const isPeak  = i === peakIdx;
+                const zoneW   = PLOT_W / n;
 
                 return (
-                  <g
-                    key={i}
-                    role="button"
-                    tabIndex={0}
-                    aria-label={`${labels[i]}: ${volume[i] || 0} transaksi, smile ${smileAvg[i] ?? 0}%`}
-                    onClick={() => setActiveIndex(i)}
-                    onKeyDown={(event) => handlePointKeyDown(event, i)}
-                    className="cursor-pointer outline-none"
-                  >
-                    <circle cx={x} cy={y} r="13" fill="#2563eb" opacity="0" />
-                    {isActive && <circle cx={x} cy={y} r="8" fill="#2563eb" opacity="0.16" />}
-                    <circle
-                      cx={x}
-                      cy={y}
-                      r={isActive ? "4.8" : "3.5"}
-                      fill="#2563eb"
-                      stroke="white"
-                      strokeWidth="1.5"
-                    />
+                  <g key={i}>
+                    {/* Hover zone */}
+                    <rect x={x - zoneW / 2} y={PAD_T} width={zoneW} height={PLOT_H}
+                      fill="transparent" style={{ cursor: "pointer" }}
+                      onMouseEnter={() => setHoverIdx(i)}
+                      onClick={() => setActiveIdx(activeIdx === i ? null : i)} />
+                    {/* Bar shadow */}
+                    {isFocus && (
+                      <rect x={x - BAR_W / 2 + 2} y={by + 2}
+                        width={BAR_W} height={Math.max(bh, 2)}
+                        rx={5} fill={C.barHover} opacity=".18" />
+                    )}
+                    {/* Bar */}
+                    <rect x={x - BAR_W / 2} y={by}
+                      width={BAR_W} height={Math.max(bh, 2)} rx={5}
+                      fill={isFocus ? "url(#cg_barH)" : "url(#cg_bar)"}
+                      style={{ transition: "fill .15s" }} />
+                    {/* Badge PEAK */}
+                    {isPeak && v > 0 && (
+                      <g>
+                        <rect x={x - 16} y={by - 20} width={32} height={14} rx={4} fill="#1e293b" />
+                        <text x={x} y={by - 10} textAnchor="middle"
+                          fontSize={9} fontWeight="700" fill="white">PEAK</text>
+                      </g>
+                    )}
+                    {/* Nilai hover */}
+                    {isFocus && !isPeak && v > 0 && (
+                      <text x={x} y={by - 6} textAnchor="middle"
+                        fontSize={10} fontWeight="700" fill={C.barHover}>{v}</text>
+                    )}
                   </g>
                 );
               })}
+
+              {/* ── Smile area ── */}
+              {areaPath && (
+                <path d={areaPath} fill="url(#cg_area)" clipPath="url(#cg_clip)" />
+              )}
+              {/* ── Smile line ── */}
+              {linePath && (
+                <path d={linePath} fill="none" stroke={C.line}
+                  strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"
+                  clipPath="url(#cg_clip)" />
+              )}
+
+              {/* ── Dots smile ── */}
+              {smilePts.map(([x, y], i) => {
+                const isFocus  = hoverIdx === i || activeIdx === i;
+                const sc       = smileAvg[i];
+                const dotColor = sc >= THRESH ? C.line : sc >= 40 ? "#f59e0b" : "#ef4444";
+                return (
+                  <g key={i} style={{ cursor: "pointer" }}
+                    onMouseEnter={() => setHoverIdx(i)}
+                    onClick={() => setActiveIdx(activeIdx === i ? null : i)}>
+                    {isFocus && <circle cx={x} cy={y} r={9} fill={dotColor} opacity=".15" />}
+                    <circle cx={x} cy={y} r={isFocus ? 5 : 3.5}
+                      fill={dotColor} stroke="white" strokeWidth={2}
+                      style={{ transition: "r .12s" }} />
+                  </g>
+                );
+              })}
+
+              {/* ── Garis vertikal hover ── */}
+              {focused && (
+                <line x1={focused.x} y1={PAD_T} x2={focused.x} y2={PAD_T + PLOT_H}
+                  stroke="#94a3b8" strokeWidth={1} strokeDasharray="4 3" opacity=".5" />
+              )}
+
+              {/* ── Tooltip ── */}
+              {focused && (
+                <SvgTooltip
+                  x={focused.x} y={focused.y}
+                  label={focused.label} vol={focused.volume} smile={focused.smile}
+                  svgW={SVG_W} padL={PAD_L} padR={PAD_R}
+                />
+              )}
+
+              {/* ── Label X-axis ── */}
+              {labels.map((lbl, i) => {
+                if (i % skipX !== 0 && i !== n - 1) return null;
+                const x       = xOf(i);
+                const isFocus = hoverIdx === i || activeIdx === i;
+                return (
+                  <text key={i} x={x} y={SVG_H - 8} textAnchor="middle"
+                    fontSize={isFocus ? 11 : 10}
+                    fontWeight={isFocus ? "700" : "400"}
+                    fill={isFocus ? C.textDark : C.text}>{lbl}</text>
+                );
+              })}
             </svg>
-          )}
 
-          {/* X-axis labels */}
-          {hasData && (
-            <div className="mt-4 grid text-xs text-slate-400"
-              style={{ gridTemplateColumns: `repeat(${labels.length}, 1fr)` }}>
-              {labels.map((label, i) => (
-                <span key={i} className="text-center truncate">{label}</span>
-              ))}
-            </div>
-          )}
-
-          {/* Legend — sama persis dengan aslinya */}
-          {selectedPoint && (
-            <div className="mt-4 flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-500">
-              <span className="font-semibold text-slate-800">{selectedPoint.label}</span>
-              <span className="h-1 w-1 rounded-full bg-slate-300" />
-              <span>
-                Jumlah: <span className="font-semibold text-slate-800">{selectedPoint.volume}</span>
+            {/* ── Legend ── */}
+            <div className="mt-1 flex flex-wrap items-center gap-5 border-t border-slate-100 px-2 pt-3 text-xs font-medium text-slate-500">
+              <span className="flex items-center gap-2">
+                <span className="h-3 w-3 rounded-sm" style={{ background: C.bar }} />
+                Volume Sesi (skala kiri)
               </span>
-              <span className="h-1 w-1 rounded-full bg-slate-300" />
-              <span>
-                Smile Avg: <span className="font-semibold text-slate-800">{selectedPoint.smile}%</span>
+              <span className="flex items-center gap-2">
+                <svg width="20" height="8">
+                  <path d="M0 4 C5,1 10,7 20,4" stroke={C.line} strokeWidth="2" fill="none" />
+                </svg>
+                Smile Score Avg % (skala kanan)
+              </span>
+              <span className="flex items-center gap-2">
+                <span className="inline-block h-0 w-5 border-t-2 border-dashed"
+                  style={{ borderColor: C.threshold }} />
+                Threshold 60%
+              </span>
+              <span className="flex items-center gap-2">
+                <span className="h-3 w-3 rounded-sm"
+                  style={{ background: C.good, border: "1px solid #bbf7d0" }} />
+                Zona Baik (≥60%)
+              </span>
+              <span className="flex items-center gap-2">
+                <span className="h-3 w-3 rounded-sm"
+                  style={{ background: C.bad, border: "1px solid #fecaca" }} />
+                Zona Perhatian (&lt;60%)
+              </span>
+              <span className="ml-auto text-[10px] italic text-slate-300">
+                Hover / klik untuk detail
               </span>
             </div>
-          )}
-
-          <div className="mt-4 flex flex-wrap gap-4 text-xs font-medium text-slate-500">
-            <span className="flex items-center gap-2">
-              <span className="h-2.5 w-2.5 rounded-full bg-blue-500" />
-              Volume Transaksi
-            </span>
-            <span className="flex items-center gap-2">
-              <span className="h-2.5 w-2.5 rounded-full bg-amber-500" />
-              Smile Score Avg (%)
-            </span>
-          </div>
-        </div>
+          </>
+        )}
       </div>
     </div>
   );
 }
-
-export default Chart;
