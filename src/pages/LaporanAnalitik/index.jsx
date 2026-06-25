@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import Navbar from "../../components/Navbar";
+import { apiFetch } from "../../services/apiClient";
 
 const API = process.env.REACT_APP_API_BASE_URL;
 
@@ -117,7 +118,7 @@ function LaporanAnalitik() {
 
   const fetchStats = useCallback(() => {
     setLoadStats(true);
-    fetch(`${API}/api/laporan/stats?period=${period}`)
+    apiFetch(`${API}/api/laporan/stats?period=${period}`)
       .then((r) => r.json())
       .then(setStats)
       .catch(console.error)
@@ -126,7 +127,7 @@ function LaporanAnalitik() {
 
   const fetchRank = useCallback(() => {
     setLoadRank(true);
-    fetch(`${API}/api/laporan/teller-rank?period=${period}`)
+    apiFetch(`${API}/api/laporan/teller-rank?period=${period}`)
       .then((r) => r.json())
       .then((d) => setRank(d.data || []))
       .catch(console.error)

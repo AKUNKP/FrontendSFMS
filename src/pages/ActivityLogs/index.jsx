@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
 import Navbar from "../../components/Navbar";
+import { apiFetch } from "../../services/apiClient";
 
 const API = process.env.REACT_APP_API_BASE_URL;
 
@@ -68,7 +69,7 @@ function ActivityLogs() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(buildUrl(p));
+      const res = await apiFetch(buildUrl(p));
       const data = await res.json();
       setLogs(data.data || []);
       setPagination(data.pagination || { total: 0, totalPages: 1 });

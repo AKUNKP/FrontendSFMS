@@ -8,6 +8,59 @@ import {
   updateTellerAccount,
 } from "../../services/tellerAccountService";
 
+// ── Password strength rules ────────────────────────────────────────────────────
+const PASSWORD_RULES = [
+  { id: "len",    regex: /.{8,}/,          label: "Minimal 8 karakter" },
+  { id: "upper",  regex: /[A-Z]/,          label: "Huruf besar (A-Z)" },
+  { id: "lower",  regex: /[a-z]/,          label: "Huruf kecil (a-z)" },
+  { id: "digit",  regex: /[0-9]/,          label: "Angka (0-9)" },
+  { id: "symbol", regex: /[^A-Za-z0-9]/,  label: "Simbol (!@#$%^&*)" },
+];
+
+const checkPassword = (pwd) => PASSWORD_RULES.map((r) => ({ ...r, ok: r.regex.test(pwd) }));
+const isPasswordStrong = (pwd) => checkPassword(pwd).every((r) => r.ok);
+
+// ── PasswordStrengthMeter component ───────────────────────────────────────────
+function PasswordStrengthMeter({ password }) {
+  if (!password) return null;
+  const results = checkPassword(password);
+  const passCount = results.filter((r) => r.ok).length;
+  const strength = passCount <= 2 ? "weak" : passCount <= 4 ? "medium" : "strong";
+  const barColor = strength === "strong" ? "bg-emerald-400" : strength === "medium" ? "bg-amber-400" : "bg-rose-400";
+  const barLabel = strength === "strong" ? "Kuat" : strength === "medium" ? "Sedang" : "Lemah";
+
+  return (
+    <div className="mt-3 space-y-2">
+      {/* Strength bar */}
+      <div className="flex items-center gap-2">
+        <div className="flex-1 h-1.5 rounded-full bg-slate-100">
+          <div
+            className={`h-1.5 rounded-full transition-all duration-300 ${barColor}`}
+            style={{ width: `${(passCount / 5) * 100}%` }}
+          />
+        </div>
+        <span className={`text-[10px] font-semibold ${
+          strength === "strong" ? "text-emerald-600" :
+          strength === "medium" ? "text-amber-500" : "text-rose-500"
+        }`}>{barLabel}</span>
+      </div>
+      {/* Checklist */}
+      <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+        {results.map((r) => (
+          <div key={r.id} className="flex items-center gap-1.5">
+            <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${
+              r.ok ? "bg-emerald-100 text-emerald-600" : "bg-slate-100 text-slate-400"
+            }`}>
+              {r.ok ? "✓" : "✗"}
+            </span>
+            <span className={`text-[11px] ${ r.ok ? "text-emerald-700" : "text-slate-400"}`}>{r.label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 const emptyForm = {
   nama: "",
   username: "",
@@ -110,6 +163,18 @@ function TellerManagement() {
     event.preventDefault();
     setIsSubmitting(true);
     setSubmitError("");
+
+    // Validasi password kuat di sisi frontend
+    if (formMode === "add" && !isPasswordStrong(formData.password)) {
+      setSubmitError("Password belum memenuhi standar keamanan. Periksa syarat-syarat di bawah kolom password.");
+      setIsSubmitting(false);
+      return;
+    }
+    if (formMode === "edit" && formData.password.trim() && !isPasswordStrong(formData.password)) {
+      setSubmitError("Password baru belum memenuhi standar keamanan. Periksa syarat-syarat di bawah kolom password.");
+      setIsSubmitting(false);
+      return;
+    }
 
     try {
       if (formMode === "add") {
@@ -316,10 +381,15 @@ function TellerManagement() {
                   value={formData.password}
                   onChange={(event) => setFormData((prev) => ({ ...prev, password: event.target.value }))}
                   className="mt-2 w-full rounded-2xl border border-slate-200 px-4 py-2 text-sm text-slate-700 focus:border-blue-500 focus:outline-none"
-                  placeholder={formMode === "edit" ? "Kosongkan jika tidak diubah" : "Minimal 6 karakter"}
+                  placeholder={formMode === "edit" ? "Kosongkan jika tidak diubah" : "Masukkan password"}
                   required={formMode === "add"}
                 />
-                <p className="mt-2 text-xs text-slate-400">Password disimpan dalam bentuk hash.</p>
+                <PasswordStrengthMeter password={formData.password} />
+                {!formData.password && (
+                  <p className="mt-2 text-xs text-slate-400">
+                    Wajib: min. 8 karakter, huruf besar/kecil, angka, dan simbol.
+                  </p>
+                )}
               </div>
               <div>
                 <label className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Role</label>

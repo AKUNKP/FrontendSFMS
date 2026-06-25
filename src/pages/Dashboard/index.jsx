@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import Navbar from "../../components/Navbar";
 import Card from "../../components/Card";
 import Chart from "../../components/Chart";
+import { apiFetch } from "../../services/apiClient";
 
 const API = process.env.REACT_APP_API_BASE_URL;
 
@@ -183,7 +184,7 @@ function Dashboard() {
   // ── Fetch KPI stats ────────────────────────────────────────────────────────
   const fetchStats = useCallback(() => {
     setLoadStats(true);
-    fetch(`${API}/api/dashboard/stats`)
+    apiFetch(`${API}/api/dashboard/stats`)
       .then((r) => r.json())
       .then(setStats)
       .catch(console.error)
@@ -198,7 +199,7 @@ function Dashboard() {
       params.set("tellerId", tellerId);
     }
 
-    fetch(`${API}/api/dashboard/chart?${params.toString()}`)
+    apiFetch(`${API}/api/dashboard/chart?${params.toString()}`)
       .then((r) => r.json())
       .then(setChartData)
       .catch(console.error)
@@ -206,7 +207,7 @@ function Dashboard() {
   }, []);
 
   const fetchChartTellers = useCallback(() => {
-    fetch(`${API}/api/dashboard/chart-tellers`)
+    apiFetch(`${API}/api/dashboard/chart-tellers`)
       .then((r) => r.json())
       .then((data) => setChartTellers(Array.isArray(data?.data) ? data.data : []))
       .catch(console.error);
@@ -215,7 +216,7 @@ function Dashboard() {
   // ── Fetch AI insights ──────────────────────────────────────────────────────
   const fetchInsights = useCallback(() => {
     setLoadInsights(true);
-    fetch(`${API}/api/dashboard/insights`)
+    apiFetch(`${API}/api/dashboard/insights`)
       .then((r) => r.json())
       .then(setInsights)
       .catch(console.error)
@@ -249,29 +250,29 @@ function Dashboard() {
     ? [
         {
           title: "Total Sesi Hari Ini",
-          value: loadStats ? "—" : stats.totalSesi.toString(),
-          note: loadStats ? "Memuat..." : stats.sesiNote,
+          value: loadStats ? "—" : (stats.totalSesi != null ? stats.totalSesi.toString() : "0"),
+          note: loadStats ? "Memuat..." : (stats.sesiNote ?? ""),
           accent: "from-sky-50 via-white to-white",
           tone: "sky",
         },
         {
           title: "Rata-rata Waktu Layanan",
-          value: loadStats ? "—" : stats.avgDurasi,
-          note: loadStats ? "Memuat..." : stats.durasiNote,
+          value: loadStats ? "—" : (stats.avgDurasi ?? "0 mnt"),
+          note: loadStats ? "Memuat..." : (stats.durasiNote ?? ""),
           accent: "from-emerald-50 via-white to-white",
           tone: "emerald",
         },
         {
           title: "Smile Score AI",
-          value: loadStats ? "—" : stats.avgSmile,
-          note: loadStats ? "Memuat..." : stats.smileNote,
+          value: loadStats ? "—" : (stats.avgSmile ?? "0%"),
+          note: loadStats ? "Memuat..." : (stats.smileNote ?? ""),
           accent: "from-amber-50 via-white to-white",
           tone: "amber",
         },
         {
           title: "Teller Aktif",
-          value: loadStats ? "—" : `${stats.tellerAktif}/${stats.tellerTotal}`,
-          note: loadStats ? "Memuat..." : stats.tellerNote,
+          value: loadStats ? "—" : `${stats.tellerAktif ?? 0}/${stats.tellerTotal ?? 0}`,
+          note: loadStats ? "Memuat..." : (stats.tellerNote ?? ""),
           accent: "from-purple-50 via-white to-white",
           tone: "purple",
         },

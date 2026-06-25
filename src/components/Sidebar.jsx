@@ -77,7 +77,7 @@ const allMenuItems = [
   },
 ];
 
-function Sidebar({ isOpen, onToggle }) {
+function Sidebar({ isOpen, onToggle, isMobile = false, onMobileClose }) {
   const { user, isAdmin, logout } = useAuth();
   const navigate = useNavigate();
 
@@ -99,40 +99,53 @@ function Sidebar({ isOpen, onToggle }) {
       className={cn(
         "fixed left-0 top-0 z-20 flex h-screen flex-col transition-[width] duration-300 ease-in-out",
         "bg-[#0B1D3A] border-r border-white/[0.07]",
-        isOpen ? "w-[240px]" : "w-[72px]"
+        isMobile ? "w-[240px]" : (isOpen ? "w-[240px]" : "w-[72px]")
       )}
     >
       {/* ── Logo ── */}
-      <div className="relative flex items-center gap-3 px-4 pt-6 pb-5">
+      <div className={cn("relative flex items-center gap-3 px-4 pb-5", isMobile ? "pt-4" : "pt-6")}>
         {/* Logo mark */}
         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-sky-400 to-blue-600 shadow-[0_4px_14px_rgba(56,189,248,0.35)]">
           <span className="text-[11px] font-bold text-white tracking-wide">SF</span>
         </div>
 
         {/* Brand text */}
-        <div className={cn("min-w-0 overflow-hidden transition-all duration-300", isOpen ? "w-auto opacity-100" : "w-0 opacity-0")}>
+        <div className={cn("min-w-0 overflow-hidden transition-all duration-300", (isOpen || isMobile) ? "w-auto opacity-100" : "w-0 opacity-0")}>
           <p className="text-[9px] font-semibold uppercase tracking-[0.28em] text-sky-400/80">SFMS.AI</p>
           <p className="text-[13px] font-semibold leading-tight text-white">Smart Teller<br/>Monitoring</p>
         </div>
 
-        {/* Collapse toggle */}
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-label={isOpen ? "Tutup sidebar" : "Buka sidebar"}
-          className={cn(
-            "absolute -right-3.5 top-8 flex h-7 w-7 items-center justify-center rounded-full border border-white/15 bg-[#152B50] shadow-md transition hover:bg-[#1E3A68]",
-            "text-slate-300 hover:text-white"
-          )}
-        >
-          <svg
-            viewBox="0 0 24 24"
-            className={cn("h-3.5 w-3.5 transition-transform duration-300", isOpen ? "rotate-0" : "rotate-180")}
-            fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"
+        {/* Mobile: X close button | Desktop: Collapse toggle */}
+        {isMobile ? (
+          <button
+            type="button"
+            onClick={onMobileClose}
+            aria-label="Tutup menu"
+            className="ml-auto flex h-7 w-7 items-center justify-center rounded-full border border-white/15 bg-[#152B50] shadow-md transition hover:bg-[#1E3A68] text-slate-300 hover:text-white"
           >
-            <path d="M15 6 9 12l6 6" />
-          </svg>
-        </button>
+            <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-label={isOpen ? "Tutup sidebar" : "Buka sidebar"}
+            className={cn(
+              "absolute -right-3.5 top-8 flex h-7 w-7 items-center justify-center rounded-full border border-white/15 bg-[#152B50] shadow-md transition hover:bg-[#1E3A68]",
+              "text-slate-300 hover:text-white"
+            )}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              className={cn("h-3.5 w-3.5 transition-transform duration-300", isOpen ? "rotate-0" : "rotate-180")}
+              fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"
+            >
+              <path d="M15 6 9 12l6 6" />
+            </svg>
+          </button>
+        )}
       </div>
 
       {/* ── Divider ── */}
@@ -141,14 +154,14 @@ function Sidebar({ isOpen, onToggle }) {
       {/* ── Navigation ── */}
       <nav className="flex-1 overflow-y-auto overflow-x-hidden py-4 px-3 space-y-0.5">
         {/* Section label */}
-        {isOpen && (
+        {(isOpen || isMobile) && (
           <p className="mb-2 px-2 text-[9px] font-bold uppercase tracking-[0.25em] text-slate-500">
             Menu Utama
           </p>
         )}
 
         {menuItems.map((item) => (
-          <MenuItem key={`${item.path}-${item.label}`} item={item} isOpen={isOpen} />
+          <MenuItem key={`${item.path}-${item.label}`} item={item} isOpen={isOpen || isMobile} onMobileClose={isMobile ? onMobileClose : undefined} />
         ))}
       </nav>
 
@@ -240,12 +253,13 @@ function Sidebar({ isOpen, onToggle }) {
   );
 }
 
-function MenuItem({ item, isOpen }) {
+function MenuItem({ item, isOpen, onMobileClose }) {
   return (
     <NavLink
       to={item.path}
       end
       title={!isOpen ? item.label : undefined}
+      onClick={onMobileClose}
       className={({ isActive }) =>
         cn(
           "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-medium transition-all duration-200",
