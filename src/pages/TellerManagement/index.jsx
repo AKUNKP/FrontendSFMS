@@ -82,6 +82,9 @@ function TellerManagement() {
   const [formData, setFormData] = useState(emptyForm);
   const [editingId, setEditingId] = useState(null);
 
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [tellerToDelete, setTellerToDelete] = useState(null);
+
   const loadTellers = async () => {
     setLoading(true);
     setErrorMessage("");
@@ -139,23 +142,31 @@ function TellerManagement() {
     }
   };
 
-  const handleDelete = async (row) => {
-    const confirmed = window.confirm(`Hapus akun ${row.username}?`);
+  const requestDelete = (row) => {
+    setTellerToDelete(row);
+    setDeleteModalOpen(true);
+  };
 
-    if (!confirmed) {
-      return;
-    }
+  const cancelDelete = () => {
+    setDeleteModalOpen(false);
+    setTellerToDelete(null);
+  };
 
-    setBusyId(row.id);
+  const confirmDelete = async () => {
+    if (!tellerToDelete) return;
+
+    setBusyId(tellerToDelete.id);
     setErrorMessage("");
+    setDeleteModalOpen(false); // Tutup modal saat loading berjalan
 
     try {
-      await deleteTellerAccount(row.id);
-      setTellers((prev) => prev.filter((teller) => teller.id !== row.id));
+      await deleteTellerAccount(tellerToDelete.id);
+      setTellers((prev) => prev.filter((teller) => teller.id !== tellerToDelete.id));
     } catch (error) {
       setErrorMessage(error?.response?.data?.message || "Gagal menghapus akun.");
     } finally {
       setBusyId(null);
+      setTellerToDelete(null);
     }
   };
 
@@ -267,7 +278,7 @@ function TellerManagement() {
           </button>
           <button
             type="button"
-            onClick={() => handleDelete(row)}
+            onClick={() => requestDelete(row)}
             disabled={busyId === row.id || isSubmitting}
             className="rounded-full border border-rose-200 px-3 py-1 text-xs font-semibold text-rose-600 transition hover:border-rose-300 hover:text-rose-700"
           >
@@ -439,6 +450,40 @@ function TellerManagement() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      ) : null}
+
+      {/* ── Dialog Konfirmasi Hapus ── */}
+      {deleteModalOpen && tellerToDelete ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px]" onClick={cancelDelete} />
+          <div className="relative w-full max-w-sm transform overflow-hidden rounded-3xl bg-white p-6 shadow-[0_30px_80px_-40px_rgba(15,23,42,0.6)] transition-all">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-rose-100">
+              <svg className="h-7 w-7 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+            </div>
+            <h3 className="mt-5 text-center text-lg font-bold text-slate-900">Hapus Akun?</h3>
+            <p className="mt-2 text-center text-sm leading-relaxed text-slate-500">
+              Apakah Anda yakin ingin menghapus akun <span className="font-bold text-slate-800">{tellerToDelete.username}</span>? Tindakan ini tidak dapat dikembalikan.
+            </p>
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+              <button
+                type="button"
+                onClick={cancelDelete}
+                className="w-full rounded-2xl bg-slate-100 py-3 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-200"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={confirmDelete}
+                className="w-full rounded-2xl bg-rose-600 py-3 text-sm font-semibold text-white shadow-[0_12px_26px_-18px_rgba(225,29,72,0.7)] transition-colors hover:bg-rose-700"
+              >
+                Ya, Hapus
+              </button>
+            </div>
           </div>
         </div>
       ) : null}
