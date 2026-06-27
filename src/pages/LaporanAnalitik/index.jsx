@@ -100,6 +100,22 @@ function TellerRankTable({ data, loading }) {
   );
 }
 
+// Badge jenis file laporan
+function FileBadge({ jenis }) {
+  const map = {
+    PDF:   "bg-rose-100 text-rose-700",
+    Excel: "bg-emerald-100 text-emerald-700",
+    CSV:   "bg-blue-100 text-blue-700",
+    Word:  "bg-sky-100 text-sky-700",
+  };
+  const icon = { PDF: "📄", Excel: "📊", CSV: "📋", Word: "📝" };
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ${map[jenis] || "bg-slate-100 text-slate-600"}`}>
+      {icon[jenis] || "📁"} {jenis}
+    </span>
+  );
+}
+
 function LaporanAnalitik() {
   const [period, setPeriod]       = useState("today");
   const [stats,  setStats]         = useState(null);
@@ -108,6 +124,10 @@ function LaporanAnalitik() {
   const [loadRank,  setLoadRank]   = useState(true);
   const [openExport, setOpenExport] = useState(false);
   const exportRef = useRef(null);
+
+  // [BARU] State riwayat laporan (tabel reports)
+  const [reportHistory, setReportHistory] = useState([]);
+  const [loadHistory, setLoadHistory]     = useState(true);
 
   // Close dropdown saat klik di luar
   useEffect(() => {
@@ -134,10 +154,25 @@ function LaporanAnalitik() {
       .finally(() => setLoadRank(false));
   }, [period]);
 
+  // [BARU] Fetch riwayat laporan dari tabel reports
+  const fetchReportHistory = useCallback(() => {
+    setLoadHistory(true);
+    apiFetch(`${API}/api/laporan/history?limit=15`)
+      .then((r) => r.json())
+      .then((d) => setReportHistory(d.data || []))
+      .catch(console.error)
+      .finally(() => setLoadHistory(false));
+  }, []);
+
   useEffect(() => {
     fetchStats();
     fetchRank();
   }, [fetchStats, fetchRank]);
+
+  // [BARU] Fetch history sekali saat halaman dibuka
+  useEffect(() => {
+    fetchReportHistory();
+  }, [fetchReportHistory]);
 
   const EXPORT_OPTIONS = [
     { key: "pdf",   label: "PDF (.pdf)",   icon: "📄", endpoint: "export-pdf" },
@@ -147,13 +182,48 @@ function LaporanAnalitik() {
   ];
 
   const handleExport = (endpoint) => {
-    window.open(`${API}/api/laporan/${endpoint}?period=${period}`, "_blank");
     setOpenExport(false);
+    apiFetch(`${API}/api/laporan/${endpoint}?period=${period}`)
+      .then(async (res) => {
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.message || "Gagal melakukan export laporan");
+        }
+        const disposition = res.headers.get("Content-Disposition");
+        let filename = `laporan_${period}`;
+        if (disposition && disposition.indexOf('filename=') !== -1) {
+          const matches = /filename="([^"]+)"/.exec(disposition);
+          if (matches && matches[1]) filename = matches[1];
+        }
+        const blob = await res.blob();
+        return { blob, filename };
+      })
+      .then(({ blob, filename }) => {
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+        // Refresh history setelah export (delay 1.5s agar backend selesai INSERT)
+        setTimeout(fetchReportHistory, 1500);
+      })
+      .catch((err) => {
+        console.error("Export error:", err);
+        alert("Export gagal: " + err.message);
+      });
   };
 
-  // Build metric cards
   const buildDeltaClass = (d) =>
     d === null ? "" : d >= 0 ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700";
+
+  const getSmileColor = (score) => {
+    if (score >= 85) return "bg-emerald-500";
+    if (score >= 70) return "bg-amber-500";
+    return "bg-rose-500";
+  };
 
   const metricCards = stats ? [
     {
@@ -172,19 +242,19 @@ function LaporanAnalitik() {
       delta: stats.delta_smile !== null ? `${stats.delta_smile}%` : null,
       note:  stats.note_smile,
       progress: stats.progress_smile,
-      barClass: "bg-emerald-500",
+      barClass: getSmileColor(stats.avg_smile),
       deltaClass: buildDeltaClass(stats.delta_smile),
-      borderClass: "border-emerald-200",
+      borderClass: stats.avg_smile >= 85 ? "border-emerald-200" : (stats.avg_smile >= 70 ? "border-amber-200" : "border-rose-200"),
     },
     {
       title: "Pelanggaran SLA (> 5m)",
       value: loadStats ? "—" : stats.pelanggaran_sla.toString(),
       delta: null,
       note:  stats.note_sla,
-      progress: 1 - stats.progress_sla,
-      barClass: "bg-amber-500",
+      progress: stats.total_sesi > 0 ? (stats.pelanggaran_sla / stats.total_sesi) : 0,
+      barClass: stats.pelanggaran_sla > 0 ? "bg-rose-500" : "bg-emerald-500",
       deltaClass: "",
-      borderClass: "border-amber-200",
+      borderClass: stats.pelanggaran_sla > 0 ? "border-rose-200" : "border-emerald-200",
     },
   ] : [];
 
@@ -211,7 +281,7 @@ function LaporanAnalitik() {
                 key={p.key}
                 onClick={() => setPeriod(p.key)}
                 className={`px-3 py-1.5 transition-colors ${
-                  period === p.key ? "bg-slate-900 text-white" : "text-slate-500 hover:bg-slate-50"
+                  period === p.key ? "bg-blue-600 text-white" : "text-slate-500 hover:bg-slate-50"
                 }`}
               >
                 {p.label}
@@ -298,6 +368,68 @@ function LaporanAnalitik() {
           </div>
         </div>
         <TellerRankTable data={rank} loading={loadRank} />
+      </section>
+
+      {/* [BARU] Riwayat Laporan (dari tabel reports) */}
+      <section className="section-enter mt-6 rounded-3xl bg-white p-6 shadow-[0_18px_40px_-26px_rgba(15,23,42,0.5)]">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Riwayat</p>
+            <h3 className="mt-1 text-base font-semibold text-slate-900">Riwayat Ekspor Laporan</h3>
+            <p className="mt-0.5 text-xs text-slate-400">Setiap kali laporan di-export, tercatat di sini secara otomatis.</p>
+          </div>
+          <button
+            onClick={fetchReportHistory}
+            className="rounded-full border border-slate-200 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500 hover:border-slate-300 transition"
+          >
+            Refresh
+          </button>
+        </div>
+
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400 border-b border-slate-100">
+                <th className="pb-3 pr-4">#</th>
+                <th className="pb-3 pr-4">Tanggal Generate</th>
+                <th className="pb-3 pr-4">Jenis File</th>
+                <th className="pb-3">Di-export Oleh</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-50">
+              {loadHistory ? (
+                [1,2,3].map((i) => (
+                  <tr key={i}>
+                    {[1,2,3,4].map((j) => (
+                      <td key={j} className="py-3 pr-4">
+                        <div className="h-4 rounded bg-slate-100 animate-pulse" />
+                      </td>
+                    ))}
+                  </tr>
+                ))
+              ) : reportHistory.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="py-8 text-center text-sm text-slate-400">
+                    Belum ada laporan yang di-export. Klik tombol Export di atas untuk mencoba.
+                  </td>
+                </tr>
+              ) : reportHistory.map((r, i) => (
+                <tr key={r.id_report} className="hover:bg-slate-50/50 transition-colors">
+                  <td className="py-3 pr-4 text-xs text-slate-400">{i + 1}</td>
+                  <td className="py-3 pr-4 text-slate-600 text-xs">
+                    {r.tanggal_generate
+                      ? new Date(r.tanggal_generate).toLocaleString("id-ID", { dateStyle: "short", timeStyle: "short" })
+                      : "—"}
+                  </td>
+                  <td className="py-3 pr-4">
+                    <FileBadge jenis={r.jenis_file} />
+                  </td>
+                  <td className="py-3 text-slate-600 text-xs">{r.nama_user || "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </section>
     </div>
   );
